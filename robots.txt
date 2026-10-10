@@ -1,0 +1,4 @@
+User-Agent: *
+Allow: /
+
+Sitemap: https://elevatemavens.vercel.app/sitemap.xml

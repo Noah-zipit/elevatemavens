@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin — Elevate Mavens</title>
+<style>
+  :root { --ink: #1a1815; --paper: #faf8f4; --line: #e5e0d6; --muted: #8a847a; --accent: #c2410c; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Inter Tight", -apple-system, "Segoe UI", sans-serif; background: var(--paper); color: var(--ink); min-height: 100vh; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 48px 20px 80px; }
+  .kicker { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  h1 { font-size: 34px; letter-spacing: -0.02em; margin-bottom: 28px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-bottom: 16px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .stat .n { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+  .stat .l { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+  h2 { font-size: 15px; letter-spacing: .02em; margin-bottom: 14px; }
+  .bars { display: flex; align-items: flex-end; gap: 5px; height: 110px; }
+  .bar { flex: 1; background: var(--ink); border-radius: 3px 3px 0 0; min-height: 3px; position: relative; }
+  .bar span { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 9px; color: var(--muted); white-space: nowrap; }
+  .chartpad { padding-bottom: 26px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  th { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=password] { width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; background: #fff; }
+  button { margin-top: 12px; padding: 12px 26px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .err { color: #b91c1c; font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .login { max-width: 380px; margin: 12vh auto 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .stats { grid-template-columns: 1fr; } .row2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+(function () {
+  var app = document.getElementById("app");
+  var token = sessionStorage.getItem("em_admin_pw") || "";
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  function showLogin(err) {
+    app.innerHTML =
+      '<div class="login"><div class="kicker">Elevate Mavens</div><h1>Admin</h1>' +
+      '<div class="card"><input id="pw" type="password" placeholder="Password" autocomplete="current-password">' +
+      '<button id="go">Sign in</button><div class="err">' + (err ? esc(err) : "") + "</div></div></div>";
+    var pw = document.getElementById("pw"), go = document.getElementById("go");
+    pw.focus();
+    function submit() {
+      token = pw.value;
+      fetch("/api/admin/visits", { headers: { Authorization: "Bearer " + token } }).then(function (r) {
+        if (!r.ok) throw new Error("wrong password");
+        return r.json();
+      }).then(function (d) {
+        sessionStorage.setItem("em_admin_pw", token);
+        showDash(d);
+      }).catch(function () { showLogin("Wrong password."); });
+    }
+    go.onclick = submit;
+    pw.onkeydown = function (e) { if (e.key === "Enter") submit(); };
+  }
+
+  function showDash(d) {
+    if (d && d.configured === false) {
+      app.innerHTML = '<div class="kicker">Elevate Mavens</div><h1>Admin</h1><div class="card"><p class="muted">Analytics not configured yet.</p></div>';
+      return;
+    }
+    var max = Math.max.apply(null, d.days.map(function (x) { return x.count; }).concat([1]));
+    var bars = d.days.map(function (x) {
+      var h = Math.max(3, Math.round((x.count / max) * 100));
+      return '<div class="bar" style="height:' + h + 'px" title="' + esc(x.label) + ": " + x.count + '"><span>' + esc(x.label.slice(0, 6)) + "</span></div>";
+    }).join("");
+    function rows(list, label) {
+      if (!list.length) return '<p class="muted">No data yet.</p>';
+      return "<table><tr><th>" + label + "</th><th style='text-align:right'>Visits</th></tr>" +
+        list.map(function (x) { return "<tr><td>" + esc(x.name || "(direct)") + '</td><td class="num">' + x.count + "</td></tr>"; }).join("") + "</table>";
+    }
+    var recent = d.recent.length ? "<table><tr><th>Time</th><th>Page</th><th>Referrer</th></tr>" +
+      d.recent.map(function (v) {
+        var t = new Date(v.t);
+        return "<tr><td>" + esc(t.toLocaleString()) + "</td><td>" + esc(v.p) + "</td><td>" + esc(v.r || "(direct)") + "</td></tr>";
+      }).join("") + "</table>" : '<p class="muted">No visits yet.</p>';
+    app.innerHTML =
+      '<div class="kicker">Elevate Mavens</div><h1>Visitors</h1>' +
+      '<div class="stats">' +
+      '<div class="stat"><div class="n">' + d.total + '</div><div class="l">Total visits</div></div>' +
+      '<div class="stat"><div class="n">' + d.today + '</div><div class="l">Today</div></div>' +
+      '<div class="stat"><div class="n">' + d.week + '</div><div class="l">Last 7 days</div></div></div>' +
+      '<div class="card chartpad"><h2>Last 14 days</h2><div class="bars">' + bars + "</div></div>" +
+      '<div class="row2"><div class="card"><h2>Top pages</h2>' + rows(d.topPages, "Page") + '</div>' +
+      '<div class="card"><h2>Top referrers</h2>' + rows(d.topReferrers, "Referrer") + "</div></div>" +
+      '<div class="card"><h2>Recent visits</h2>' + recent + "</div>";
+  }
+
+  if (!token) { showLogin(""); return; }
+  fetch("/api/admin/visits", { headers: { Authorization: "Bearer " + token } })
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(showDash)
+    .catch(function () { sessionStorage.removeItem("em_admin_pw"); showLogin(""); });
+})();
+</script>
+<script>(function(){try{if(sessionStorage.getItem("em_visit"))return;sessionStorage.setItem("em_visit","1");fetch("/api/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:location.pathname,referrer:document.referrer||"",ts:Date.now()}),keepalive:true}).catch(function(){})}catch(e){}})();</script></body>
+</html>
